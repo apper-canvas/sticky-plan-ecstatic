@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { format, addDays, isSameDay } from 'date-fns'
+import { format, addDays, addWeeks, addMonths, isSameDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, getDay, getDate, isSameMonth } from 'date-fns'
 import { toast } from 'react-toastify'
 import { useDndMonitor, DndContext, DragOverlay, useDroppable, useDraggable } from '@dnd-kit/core'
 import getIcon from '../utils/iconUtils'
@@ -14,6 +14,9 @@ const CheckIcon = getIcon('Check')
 const ChevronLeftIcon = getIcon('ChevronLeft')
 const ChevronRightIcon = getIcon('ChevronRight')
 const StickyNoteIcon = getIcon('StickyNote')
+const ClockIcon = getIcon('Clock')
+const CalendarDaysIcon = getIcon('CalendarDays')
+const CalendarRangeIcon = getIcon('CalendarRange')
 const CalendarIcon = getIcon('Calendar')
 
 // Color options for sticky notes
@@ -262,6 +265,139 @@ function Modal({ isOpen, onClose, title, children }) {
   )
 }
 
+// View Selector Component
+function ViewSelector({ currentView, onViewChange }) {
+  const views = [
+    { id: 'daily', label: 'Day', icon: ClockIcon },
+    { id: 'weekly', label: 'Week', icon: CalendarDaysIcon },
+    { id: 'monthly', label: 'Month', icon: CalendarRangeIcon }
+  ]
+  
+  return (
+    <div className="view-selector bg-white dark:bg-surface-800 shadow-sm p-1 rounded-lg flex">
+      {views.map(view => {
+        const Icon = view.icon
+        return (
+          <button
+            key={view.id}
+            onClick={() => onViewChange(view.id)}
+            className={`px-3 py-2 rounded-md flex items-center gap-1 transition-colors ${
+              currentView === view.id 
+                ? 'bg-primary/10 text-primary font-medium' 
+                : 'text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700'
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            <span>{view.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Daily View Component
+function DailyView({ currentDate, tasks, handleDragStart, handleDragEnd }) {
+  // Filter tasks for the current day
+  const tasksForDay = tasks.filter(task => 
+    isSameDay(new Date(task.date), currentDate)
+  )
+  
+  // Group tasks by time slot
+  const getTasksByHour = (hour) => {
+    return tasksForDay.filter(task => task.timeSlot === hour)
+  }
+  
+  return (
+    <div className="h-full overflow-y-auto">
+      {TIME_SLOTS.map(hour => (
+        <TimeSlot
+          key={hour}
+          hour={hour}
+          date={currentDate}
+          tasks={getTasksByHour(hour)}
+          isActive={new Date().getHours() === hour && isSameDay(new Date(), currentDate)}
+        />
+      ))}
+    </div>
+  )
+}
+
+// Weekly View Component
+function WeeklyView({ startDate, tasks, handleDragStart, handleDragEnd }) {
+  // Calculate the days of the week
+  const endDate = endOfWeek(startDate)
+  const daysOfWeek = eachDayOfInterval({ start: startDate, end: endDate })
+  
+  // Helper to get tasks for a specific day and hour
+  const getTasksByDayAndHour = (day, hour) => {
+    return tasks.filter(task => 
+      isSameDay(new Date(task.date), day) && task.timeSlot === hour
+    )
+  }
+  
+  return (
+    <div className="h-full overflow-y-auto">
+      {/* Header row with days */}
+      <div className="flex border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800">
+        <div className="w-20 min-w-[5rem] border-r border-surface-200 dark:border-surface-700"></div>
+        {daysOfWeek.map((day, index) => (
+          <div 
+            key={index} 
+            className={`flex-1 text-center py-2 font-medium ${
+              isSameDay(day, new Date()) ? 'bg-primary/10 text-primary' : ''
+            }`}
+          >
+            <div className="text-sm">{format(day, 'EEE')}</div>
+            <div className={`text-lg ${isSameDay(day, new Date()) ? 'text-primary' : ''}`}>
+              {format(day, 'd')}
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {/* Time slots */}
+      {TIME_SLOTS.map(hour => (
+        <div key={hour} className="flex border-b border-surface-200 dark:border-surface-700">
+          <div className="w-20 min-w-[5rem] flex items-center justify-center border-r border-surface-200 dark:border-surface-700 py-2 text-sm text-surface-500">
+            {hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+          </div>
+          
+          {daysOfWeek.map((day, index) => {
+            const isActive = new Date().getHours() === hour && isSameDay(day, new Date());
+            const cellId = `${format(day, 'yyyy-MM-dd')}-${hour}`;
+            const { setNodeRef } = useDroppable({
+              id: cellId,
+              data: { hour, date: day }
+            });
+            
+            return (
+              <div 
+                key={index}
+                ref={setNodeRef}
+                className={`flex-1 min-h-[100px] p-2 border-r border-surface-200 dark:border-surface-700 ${
+                  isActive ? 'bg-surface-100/50 dark:bg-surface-800/50' : ''
+                }`}
+              >
+                <AnimatePresence>
+                  {getTasksByDayAndHour(day, hour).map(task => (
+                    <StickyNote 
+                      key={task.id} 
+                      task={task} 
+                      onEdit={() => {}} 
+                      onDelete={() => {}} 
+                    />
+                  ))}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Main Feature Component
 function MainFeature() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -274,6 +410,7 @@ function MainFeature() {
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [draggedTask, setDraggedTask] = useState(null)
+  const [viewType, setViewType] = useState('daily')
   
   // Save tasks to localStorage when they change
   useEffect(() => {
@@ -330,19 +467,62 @@ function MainFeature() {
     }
   }
   
-  // Filter tasks for the current day
-  const tasksForDay = tasks.filter(task => 
-    isSameDay(new Date(task.date), currentDate)
-  )
-  
-  // Group tasks by time slot
-  const getTasksByHour = (hour) => {
-    return tasksForDay.filter(task => task.timeSlot === hour)
+  // Handle view change
+  const handleViewChange = (newView) => {
+    setViewType(newView)
   }
   
-  // Change date navigation
-  const goToNextDay = () => setCurrentDate(addDays(currentDate, 1))
-  const goToPrevDay = () => setCurrentDate(addDays(currentDate, -1))
+  // Calculate date range based on view type
+  const getDateRange = () => {
+    switch(viewType) {
+      case 'weekly':
+        return {
+          start: startOfWeek(currentDate),
+          end: endOfWeek(currentDate)
+        }
+      case 'monthly':
+        return {
+          start: startOfMonth(currentDate),
+          end: endOfMonth(currentDate)
+        }
+      case 'daily':
+      default:
+        return {
+          start: currentDate,
+          end: currentDate
+        }
+    }
+  }
+  
+  // Navigation based on view type
+  const goToNext = () => {
+    switch(viewType) {
+      case 'monthly':
+        setCurrentDate(addMonths(currentDate, 1))
+        break
+      case 'weekly':
+        setCurrentDate(addWeeks(currentDate, 1))
+        break
+      case 'daily':
+      default:
+        setCurrentDate(addDays(currentDate, 1))
+    }
+  }
+  
+  const goToPrev = () => {
+    switch(viewType) {
+      case 'monthly':
+        setCurrentDate(addMonths(currentDate, -1))
+        break
+      case 'weekly':
+        setCurrentDate(addWeeks(currentDate, -1))
+        break
+      case 'daily':
+      default:
+        setCurrentDate(addDays(currentDate, -1))
+    }
+  }
+  
   const goToToday = () => setCurrentDate(new Date())
   
   return (
@@ -350,8 +530,9 @@ function MainFeature() {
       {/* Date navigation and actions */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
         <div className="flex items-center space-x-2">
+          {/* Previous button */}
           <button 
-            onClick={goToPrevDay}
+            onClick={goToPrev}
             className="p-2 rounded-full hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
             aria-label="Previous day"
           >
@@ -359,29 +540,40 @@ function MainFeature() {
           </button>
           
           <div className="flex items-center bg-white dark:bg-surface-800 shadow-sm px-4 py-2 rounded-xl">
-            <CalendarIcon className="h-5 w-5 mr-2 text-primary" />
+            <CalendarIcon className="h-5 w-5 mr-2 text-primary" /> 
             <h2 className="text-lg font-semibold">
-              {format(currentDate, 'EEEE, MMMM d, yyyy')}
+              {viewType === 'daily' && format(currentDate, 'EEEE, MMMM d, yyyy')}
+              {viewType === 'weekly' && `${format(startOfWeek(currentDate), 'MMM d')} - ${format(endOfWeek(currentDate), 'MMM d, yyyy')}`}
+              {viewType === 'monthly' && format(currentDate, 'MMMM yyyy')}
             </h2>
           </div>
           
+          {/* Next button */}
           <button 
-            onClick={goToNextDay}
+            onClick={goToNext}
             className="p-2 rounded-full hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
-            aria-label="Next day"
+            aria-label="Next period"
           >
             <ChevronRightIcon className="h-5 w-5" />
           </button>
         </div>
         
         <div className="flex gap-2">
+          {/* View selector */}
+          <ViewSelector 
+            currentView={viewType}
+            onViewChange={handleViewChange}
+          />
+          
+          {/* Today button */}
           <button
             onClick={goToToday}
             className="px-4 py-2 bg-white dark:bg-surface-800 shadow-sm rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
           >
             Today
           </button>
-          
+
+          {/* Add task button */}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -398,17 +590,22 @@ function MainFeature() {
       <div className="flex-1 bg-white dark:bg-surface-800 rounded-xl shadow-sm overflow-hidden">
         <DndContext
           onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          {/* Render time slots */}
-          <div className="h-full overflow-y-auto">
-            {TIME_SLOTS.map(hour => (
-              <TimeSlot
-                key={hour}
-                hour={hour}
-                date={currentDate}
-                tasks={getTasksByHour(hour)}
-                isActive={new Date().getHours() === hour && isSameDay(new Date(), currentDate)}
+          {/* Calendar views */}
+          <div className="h-full">
+            {viewType === 'daily' && (
+              <DailyView 
+                currentDate={currentDate}
+                tasks={tasks}
+                handleDragStart={handleDragStart}
+                handleDragEnd={handleDragEnd}
+              />
+            )}
+            {viewType === 'weekly' && (
+              <WeeklyView
+                startDate={startOfWeek(currentDate)}
+                tasks={tasks}
+              />
+            )}
               />
             ))}
           </div>
@@ -423,7 +620,7 @@ function MainFeature() {
       </div>
       
       {/* Empty state */}
-      {tasksForDay.length === 0 && (
+      {tasks.filter(task => isSameDay(new Date(task.date), currentDate)).length === 0 && viewType === 'daily' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-white dark:bg-surface-800 rounded-xl p-6 text-center max-w-sm">
             <StickyNoteIcon className="h-14 w-14 mx-auto mb-4 text-surface-400" />

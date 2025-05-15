@@ -37,6 +37,15 @@
   .sticky-note:hover {
     @apply shadow-md scale-[1.02] z-10;
   }
+  
+  .view-selector button {
+    @apply text-sm transition-all;
+  }
+  
+  .view-selector button:hover {
+    @apply bg-surface-100 dark:bg-surface-700;
+  }
+  
 }
 
 @layer utilities {
@@ -47,5 +56,14 @@
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  
+  .week-grid {
+    grid-template-columns: 5rem repeat(7, 1fr);
+  }
+  
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
   }
 }
