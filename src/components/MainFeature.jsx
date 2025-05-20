@@ -398,6 +398,51 @@ function WeeklyView({ startDate, tasks, handleDragStart, handleDragEnd }) {
   );
 }
 
+// Monthly View Component
+function MonthlyView({ currentDate, tasks, handleDragStart, handleDragEnd }) {
+  // Get days for the current month view
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const startDate = startOfWeek(monthStart);
+  const endDate = endOfWeek(monthEnd);
+  const daysInMonthView = eachDayOfInterval({ start: startDate, end: endDate });
+  
+  // Helper to get tasks for a specific day
+  const getTasksByDay = (day) => {
+    return tasks.filter(task => isSameDay(new Date(task.date), day));
+  };
+  
+  return (
+    <div className="h-full overflow-auto p-2">
+      <div className="month-grid gap-1">
+        {/* Day names header */}
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+          <div key={day} className="text-center py-2 font-medium text-surface-600">
+            {day}
+          </div>
+        ))}
+        
+        {/* Calendar days */}
+        {daysInMonthView.map((day, i) => {
+          const dayTasks = getTasksByDay(day);
+          const { setNodeRef } = useDroppable({
+            id: `month-${format(day, 'yyyy-MM-dd')}`,
+            data: { date: day }
+          });
+          
+          return (
+            <div key={i} ref={setNodeRef} className={`min-h-[100px] p-2 rounded-md border border-surface-200 dark:border-surface-700 ${!isSameMonth(day, currentDate) ? 'opacity-50 bg-surface-100 dark:bg-surface-800' : 'bg-white dark:bg-surface-800'} ${isSameDay(day, new Date()) ? 'ring-2 ring-primary' : ''}`}>
+              <div className="text-right mb-1 font-medium">{format(day, 'd')}</div>
+              {dayTasks.slice(0, 3).map(task => <StickyNote key={task.id} task={task} onEdit={() => {}} onDelete={() => {}} />)}
+              {dayTasks.length > 3 && <div className="text-xs text-surface-500 mt-1">+{dayTasks.length - 3} more</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Main Feature Component
 function MainFeature() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -588,16 +633,15 @@ function MainFeature() {
       
       {/* Schedule grid */}
       <div className="flex-1 bg-white dark:bg-surface-800 rounded-xl shadow-sm overflow-hidden">
-        <DndContext
-          onDragStart={handleDragStart}
-          {/* Calendar views */}
+        <DndContext 
+          onDragStart={handleDragStart} 
+          onDragEnd={handleDragEnd}
+        >
           <div className="h-full">
             {viewType === 'daily' && (
               <DailyView 
                 currentDate={currentDate}
                 tasks={tasks}
-                handleDragStart={handleDragStart}
-                handleDragEnd={handleDragEnd}
               />
             )}
             {viewType === 'weekly' && (
@@ -606,11 +650,15 @@ function MainFeature() {
                 tasks={tasks}
               />
             )}
+            {viewType === 'monthly' && (
+              <MonthlyView
+                currentDate={currentDate}
+                tasks={tasks}
               />
+            )}
             ))}
           </div>
           
-          {/* Drag overlay */}
           {isDragging && draggedTask && (
             <DragOverlay>
               <StickyNote task={draggedTask} isOverlay={true} />
@@ -618,6 +666,7 @@ function MainFeature() {
           )}
         </DndContext>
       </div>
+      
       
       {/* Empty state */}
       {tasks.filter(task => isSameDay(new Date(task.date), currentDate)).length === 0 && viewType === 'daily' && (
